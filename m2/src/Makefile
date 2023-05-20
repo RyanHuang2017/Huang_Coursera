@@ -15,27 +15,72 @@
 # Use: make [TARGET] [PLATFORM-OVERRIDES]
 #
 # Build Targets:
-#      <Put a description of the supported targets here>
+#      	<FILE>.O --- Build <FILE>.O Object file
+#      	build --- Builds and links all source files
+#      	all --- Same as build
+#		clean --- Removes all generated files
 #
 # Platform Overrides:
-#      <Put a description of the supported Overrides here
+#      	CPU - ARM Cortex Architecture (cortex-m0plus, cortex-m4)
+#		ARCH - ARM Architecture (arm, thumb)
+#		SPECS - Specs file to give the linker (nosys.specs, nano.specs)
 #
 #------------------------------------------------------------------------------
 include sources.mk
 
 # Platform Overrides
-PLATFORM = 
+PLATFORM = MSP432
 
 # Architectures Specific Flags
-LINKER_FILE = 
-CPU = 
-ARCH = 
-SPECS = 
+LINKER_FILE = msp432p401r.lds
+CPU = cortex-m4
+ARCH = thumb
+SPECS = nosys.specs
 
 # Compiler Flags and Defines
-CC = 
-LD = 
-LDFLAGS = 
-CFLAGS = 
-CPPFLAGs = 
+ifeq ($(PLATFORM),HOST)
+	SRCS :=$(filter-out interrupts_msp432p401r_gcc.c, $(SRCS))
+	SRCS :=$(filter-out system_msp432p401r.c, $(SRCS))
+	SRCS :=$(filter-out startup_msp432p401r_gcc.c, $(SRCS))
+	CC = gcc
+	TARGET = c1m2
+	LDFLAGS = -Wl,-Map=$(TARGET).map
+	CFLAGS = -g -O0
+	CPPFLAGs = -std=c99 -Wall -Werror -MD -MP
+else
+	CC = arm-none-eabi-gcc
+	LD = arm-none-eabi-ld
+	TARGET = c1m2
+	LDFLAGS = -Wl,-Map=$(TARGET).map -T $(LINKER_FILE)
+	CFLAGS = -g -O0 -mcpu=$(CPU) -m$(ARCH) --specs=$(SPECS) -march=armv7e-m -mfloat-abi=hard -mfpu=fpv4-sp-d16
+	CPPFLAGs = -std=c99 -Wall -Werror -MD -MP
+endif
 
+# generate dependencies
+OBJS = $(SRCS:.c=.o)
+
+%.o : %.c
+	$(CC) -c $< $(INCLUDES) $(CFLAGS) $(CPPFLAGs) -o $@ -D$(PLATFORM)
+
+.PHONY: build
+build: all
+
+.PHONY: compile-all
+compile-all: all
+
+%.i : %.c 
+	$(CC) -c $< $(INCLUDES) $(CFLAGS) $(CPPFLAGs) -E -o $@ -D$(PLATFORM)
+
+%.asm : %.c
+	$(CC) -S -c	$< $(INCLUDES) $(CFLAGS) $(CPPFLAGs) -o $@ -D$(PLATFORM)
+
+.PHONY: all
+all: $(TARGET).out
+
+$(TARGET).out: $(OBJS)
+	$(CC) $(OBJS) $(INCLUDES) $(CFLAGS) $(CPPFLAGs) $(LDFLAGS) -o $@ -D$(PLATFORM)
+
+
+.PHONY: clean
+clean:
+	rm -f $(OBJS) $(TARGET).out $(TARGET).map $(SRCS:.c=.asm) $(SRCS:.c=.i) $(SRCS:.c=.d)
